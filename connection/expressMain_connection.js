@@ -11,6 +11,8 @@ const paymentRoute = require("../routes/payment");
 const serviceRoute = require("../routes/services");
 const errorHandler = require("../controllers/errorController.js");
 
+console.log('after all middleware from express file');
+
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(cookieParser());
 app.use(morgan("dev"));
@@ -23,6 +25,11 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: true }));
+
+app.use((req, res, next) => {
+  console.log('test middleware log from expressMain file');
+  next(); 
+});
 
 app.use("/api/shop", shopRoute);
 app.use("/api/auth", authRoute);
