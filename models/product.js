@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const Review = require("./review");
 
 const Schema = mongoose.Schema;
 
@@ -22,12 +23,12 @@ const ProductSchema = new Schema(
       required: true,
     },
     imageUrl: {
-      type: String,
+      type: [String], // Array of strings
       required: true,
     },
     categoryId: {
       type: mongoose.Types.ObjectId,
-      ref:'Category',
+      ref: 'Category',
       required: true,
     },
     status: {
@@ -40,12 +41,41 @@ const ProductSchema = new Schema(
       ref: "Nursery",
       required: true,
     },
-
-    flag:{
-      type:"String"
+    flag: {
+      type: String
+    },
+    avgRating: {
+      type: Number,
+      default: 0
+    },
+    noOfReviews:{
+      type:Number,
+      default:0
     }
   },
   { timestamps: true }
 );
+
+ProductSchema.methods.calculateAvgRating = async function() {
+  try {
+    const reviews = await Review.find({ productId: this._id });
+    const totalReviews = reviews.length;
+
+    if (totalReviews === 0) {
+      this.avgRating = 0;
+      await this.save();
+      return;
+    }
+
+    const sumRatings = reviews.reduce((sum, review) => sum + review.rating, 0);
+    const calculatedAvgReview = Math.floor(sumRatings / totalReviews);
+
+    this.noOfReviews = totalReviews;
+    this.avgRating = calculatedAvgReview;
+    await this.save();
+  } catch (error) {
+    throw new Error('Error calculating average rating: ' + error.message);
+  }
+};
 
 module.exports = mongoose.model("Product", ProductSchema);

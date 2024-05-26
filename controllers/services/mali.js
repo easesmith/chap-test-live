@@ -131,7 +131,7 @@ exports.userMaliService = async (req, res) => {
     const result = await MaliService.find({ userId: id })
       .skip((page - 1) * limit)
       .limit(limit);
-    const count = await MaliService.find({ userId: id }).length();
+    const count = await MaliService.count({ userId: id });
     res.status(201).json({
       success: true,
       message: "User mali service",

@@ -114,7 +114,7 @@ exports.userPlantDayCare = async (req, res) => {
     const result = await PlantDayCareService.find({ userId: id })
       .skip((page - 1) * limit)
       .limit(limit);
-    const count = await PlantDayCareService.find({ userId: id }).length();
+    const count = await PlantDayCareService.count({ userId: id });
     res.status(201).json({
       success: true,
       message: "User plant day care service",

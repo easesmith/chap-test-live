@@ -11,7 +11,7 @@ process.on("uncaughtException", (err) => {
 });
 
 const server = express();
-server.use("/images", express.static(path.join(__dirname, "../", "images")));
+server.use("/images", express.static(path.join(__dirname, "../", "../images")));
 server.use(express.static(path.join(__dirname, "build")));
 
 const mongoose_url = process.env.TEST_MONGO_CONNECTION;

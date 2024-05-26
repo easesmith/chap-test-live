@@ -71,7 +71,10 @@ exports.setSku = async (req, res) => {
 };
 
 exports.getNewArivalPlants = catchAsync(async (req, res, next) => {
-  const plants = await Product.find({ type: "Plant", flag: "new-arrival" })
+  const plants = await Product.find({
+    type: "Plant",
+    // flag: "new-arrival"
+  })
     .sort({ created_at: -1 })
     .limit(8);
 
@@ -89,7 +92,7 @@ exports.getDealOfTheDay = catchAsync(async (req, res, next) => {
   const plant = await Product.findOne({
     type: "Plant",
     flag: "deal-of-the-day",
-  });
+  }).populate({path:'categoryId',model:'Category'});
 
   res.status(200).json({ plant: plant });
 });
@@ -278,7 +281,7 @@ exports.postAddProductToCart = catchAsync(async (req, res, next) => {
 
 exports.postDeleteProductFromCart = catchAsync(async (req, res, next) => {
   // console.log("cookie",req.cookies["guestCart"]);
-  const { itemId } = req.body; // item id
+  const { itemId, clearItem } = req.body; // item id
   const user = req.user;
   const sku = await Sku.findById(itemId);
   var cart;
@@ -286,7 +289,11 @@ exports.postDeleteProductFromCart = catchAsync(async (req, res, next) => {
     return res.status(404).json({ message: "Sku does not exist" });
   } else if (user) {
     cart = await Cart.findById(user.cartId);
-    await cart.deleteProduct(sku);
+    if (clearItem) {
+      await cart.removeProduct(sku);
+    } else {
+      await cart.deleteProduct(sku);
+    }
     if (cart.items.length === 0) {
       console.log("empty");
       res.clearCookie("guestCart");
@@ -297,13 +304,12 @@ exports.postDeleteProductFromCart = catchAsync(async (req, res, next) => {
     const existingItemIndex = cart.items.findIndex((product) => {
       return product.skuId.toString() === itemId.toString();
     });
-
     console.log("index", existingItemIndex);
     if (existingItemIndex < 0) {
       return res
         .status(404)
         .json({ message: "Product does not exist in the cart" });
-    } else if (cart.items[existingItemIndex].quantity > 1) {
+    } else if (cart.items[existingItemIndex].quantity > 1 && !clearItem) {
       cart.items[existingItemIndex].quantity--;
     } else {
       var newCart = cart.items.filter((product) => {
@@ -365,7 +371,7 @@ exports.getOrders = catchAsync(async (req, res, next) => {
   var orders = await Order.find({ "user.userId": userId })
     .skip((page - 1) * limit)
     .limit(limit);
-  const count = await Order.find({ "user.userId": userId }).length();
+  const count = await Order.count({ "user.userId": userId });
   return res.status(200).json({
     success: true,
     message: "Your order list",
@@ -479,9 +485,19 @@ exports.filterSkuBySize = catchAsync(async (req, res) => {
   });
 });
 
-exports.getContent = catchAsync(async (req, res, next) => {
-  const title = req.query.title;
-  const content = await Content.findOne({ title: title });
+exports.getContent = catchAsync(async (req, res) => {
+  const { title, section, type } = req.query;
+  const getMultipleDocs = req.query.getMultipleDocs || false;
+  let filter = {};
+  if (section) filter.section = section
+  if (type) filter.type = type
+  if (title) filter.title = title
+  let content;
+  if (getMultipleDocs) {
+    content = await Content.find(filter);
+  } else {
+    content = await Content.findOne(filter);
+  }
   if (!content) {
     return res.status(404).json({
       message: `No content found for the title ${title}`,
@@ -641,21 +657,48 @@ exports.searchByProductName = catchAsync(async (req, res) => {
 });
 
 exports.handleCommonSearch = catchAsync(async (req, res) => {
-  const name = req.query.name;
-  const category = req.query.category;
-
-  const allProducts = await Product.find({
-    $and: [
-      { name: { $regex: new RegExp(name, "i") } },
-      { category: { $regex: new RegExp(category, "i") } },
-    ],
-  });
-
-  res.status(200).json({
-    success: true,
-    products: allProducts,
-    length: allProducts.length,
-  });
+  try {
+    const name = req.query.name || "";
+    const category = req.query.category || "";
+    console.log("query", req.query);
+    // Define the aggregation pipeline
+    const pipeline = [
+      {
+        $lookup: {
+          from: "categories", // The name of the Category collection
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
+      {
+        $unwind: "$category",
+      },
+      {
+        $match: {
+          $and: [
+            { name: { $regex: new RegExp(name, "i") } },
+            { "category.name": { $regex: new RegExp(category, "i") } },
+          ],
+        },
+      },
+    ];
+    // Execute the aggregation pipeline
+    const allProducts = await Product.aggregate(pipeline);
+    console.log("all Products ", allProducts);
+    // Return products in response
+    res.status(200).json({
+      success: true,
+      products: allProducts,
+      length: allProducts.length,
+    });
+  } catch (error) {
+    console.error("Error during product search:", error);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred during the search",
+    });
+  }
 });
 
 exports.searchProductByNurseryId = catchAsync(async (req, res) => {
@@ -745,6 +788,11 @@ exports.addreview = catchAsync(async (req, res, next) => {
     return res.status(400).json({ msg: "Couldn't added the review" });
   }
 
+  const product = await Product.findById(productId);
+  if (product) {
+    await product.calculateAvgRating();
+  }
+
   res.status(200).json({
     msg: "Review is added",
     review: review,
@@ -753,12 +801,9 @@ exports.addreview = catchAsync(async (req, res, next) => {
 
 exports.updateReview = catchAsync(async (req, res) => {
   const reviewId = req.params.id;
+  console.log('reviewId',reviewId)
   const { type, title, content, rating } = req.body;
 
-  const imageURL = req.file.path;
-  if (!imageURL) {
-    return res.status(400).json({ message: "Image is not provided" });
-  }
 
   if (!reviewId) {
     return res.status(400).json({ msg: "Please provide review Id" });
@@ -769,11 +814,17 @@ exports.updateReview = catchAsync(async (req, res) => {
     title: title,
     content: content,
     rating: rating,
-    image: imageURL,
+    // image: imageURL,
   };
-  const review = await Review.findOneAndUpdate(reviewId, newUpdate);
+  const review = await Review.findOneAndUpdate({ _id: reviewId }, newUpdate, { new: true });
+
   if (!review) {
     return res.status(400).json({ msg: "Couldn't update the review" });
+  }
+
+  const product = await Product.findById(review.productId);
+  if (product) {
+    await product.calculateAvgRating();
   }
   res.status(200).json({
     msg: "Review is updated",

@@ -32,16 +32,14 @@ const cartSchema = new Schema(
 );
 
 cartSchema.methods.addProduct = function (sku) {
-// console.log("sku", sku);
+  // console.log("sku", sku);
 
-  const cartProductIndex = this.items.findIndex(
-    (cp) => {
-      // console.log(" cart skuId",cp.skuId.toString());
-      // console.log("prod skuId", sku._id.toString());
-      // console.log(cp.skuId.toString() === sku._id.toString());
-      return cp.skuId.toString() === sku._id.toString()
-    }
-  );
+  const cartProductIndex = this.items.findIndex((cp) => {
+    // console.log(" cart skuId",cp.skuId.toString());
+    // console.log("prod skuId", sku._id.toString());
+    // console.log(cp.skuId.toString() === sku._id.toString());
+    return cp.skuId.toString() === sku._id.toString();
+  });
   let newQuantity = 1;
   const updatedCartItems = [...this.items];
   // console.log(cartProductIndex);
@@ -75,6 +73,20 @@ cartSchema.methods.deleteProduct = function (sku) {
     );
   }
   this.totalValue -= sku.price;
+  this.items = updatedCartItems;
+  return this.save();
+};
+
+cartSchema.methods.removeProduct = function (sku) {
+  const cartProductIndex = this.items.findIndex(
+    (cp) => cp.skuId.toString() === sku._id.toString()
+  );
+  let updatedCartItems = [...this.items];
+  let quantity = updatedCartItems[cartProductIndex].quantity;
+  updatedCartItems = this.items.filter(
+    (item) => item.skuId.toString() !== sku._id.toString()
+  );
+  this.totalValue -= sku.price * quantity;
   this.items = updatedCartItems;
   return this.save();
 };
